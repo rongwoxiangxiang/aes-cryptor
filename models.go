@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
-	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gohouse/gorose/v2"
@@ -28,25 +26,15 @@ type User struct {
 	CreatedOn time.Time `gorose:"created_on"`
 }
 
+// 设置表名, 如果没有设置, 默认使用struct的名字
+func (usr *User) TableName() string {
+	return "user"
+}
+
 func (usr *User) GetByName(name string) (*User, error) {
 	user := new(User)
 	err := engin.NewOrm().Table(user).Where("name", name).Select()
 	return user, err
-}
-
-func (usr *User) Login(name, pass string) error {
-	user := new(User)
-	err := engin.NewOrm().Table(user).Where("name", name).Select()
-	if err != nil {
-		return err
-	} else if IsEmpty(user.Pass) {
-		return errors.New("登录失败[0]")
-	}
-	signCalc := base64.StdEncoding.EncodeToString([]byte(pass + user.Salt))
-	if Md5(signCalc) != user.Pass {
-		return errors.New("密码错误")
-	}
-	return nil
 }
 
 type Log struct {
@@ -55,6 +43,10 @@ type Log struct {
 	Content   string    `gorose:"content"`
 	Operation string    `gorose:"operation"`
 	CreatedOn time.Time `gorose:"created_on"`
+}
+
+func (lg *Log) TableName() string {
+	return "log"
 }
 
 func (lg *Log) Insert(log Log) (int64, error) {

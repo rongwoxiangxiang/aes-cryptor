@@ -125,7 +125,10 @@ func decodeTxt(filePath string, needBase64Bool bool) {
 }
 
 func decodeExcel(filePath string, needBase64Bool bool) {
-	var errW string
+	var (
+		errW string
+	 	errNums int
+	)
 	columnName, _, err := dlgs.List("模式", "请选择解密数据所在列:",
 		[]string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"})
 	columnNum := ColumnNameToNumber(columnName)
@@ -139,8 +142,13 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 		if err == nil {
 			col := ColumnNumberToName(len(rows[0]) + 2)
 			for index, row := range rows {
+				if errNums > 30 {
+					errW = "错误数据过多，请修改后重新解密\n" + errW
+					break
+				}
 				content, err := DecodeAes(row[columnNum])
 				if err != nil {
+					errNums++
 					errW += fmt.Sprintf("部分信息解密Aes失败，位置为 %s%d, 原始数据为 %v，错误为 %v \n",
 						columnName, index+1, row[columnNum], err.Error())
 					continue
@@ -148,6 +156,7 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 				if needBase64Bool {
 					content, err = DecodeBase64(content)
 					if err != nil {
+						errNums++
 						errW += fmt.Sprintf("部分信息Base64失败，位置为 %s%d,原始数据为 %v，错误为 %v \n",
 							columnName, index+1, row[columnNum], err.Error())
 						continue

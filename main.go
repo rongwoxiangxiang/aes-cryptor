@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/gen2brain/dlgs"
 	"os"
@@ -182,13 +183,16 @@ func checkClose() {
 }
 
 func validLogin(name, pass string) bool {
-	err := new(User).Login(name, pass)
+	user, err := new(User).GetByName(name)
 	if err != nil {
-		_, err = new(Log).Insert(Log{Operator: name, Content: "FAIL", Operation: "LOGIN"})
+		return false
+	} else if IsEmpty(user.Pass) {
+		_, err = new(Log).Insert(Log{Operator: name, Content: "用户不存在", Operation: "LOGIN"})
 		return false
 	}
-	if err != nil {
-		_, err = new(Log).Insert(Log{Operator: name, Content: "FAIL: " + err.Error(), Operation: "LOGIN"})
+	signCalc := base64.StdEncoding.EncodeToString([]byte(pass + user.Salt))
+	if IsEmpty(user.Pass) || Md5(signCalc) != user.Pass {
+		_, err = new(Log).Insert(Log{Operator: name, Content: "密码错误", Operation: "LOGIN"})
 		return false
 	}
 	return true
