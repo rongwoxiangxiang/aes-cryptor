@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func decodeAesString(strArr []string) (datas map[string]string, errW string) {
@@ -84,22 +83,28 @@ func decodeTxt(filePath string, needBase64Bool bool) {
 	if err != nil {
 		PrintError("【0】打开源文件出错：" + err.Error())
 	}
-	file2, err := os.OpenFile("./deocdedFile"+strconv.Itoa(time.Now().Nanosecond())+".txt", os.O_CREATE|os.O_RDWR, 0777)
+	file2, err := os.OpenFile(filePath+"-decode.txt", os.O_CREATE|os.O_RDWR, 0777)
 	if err != nil {
 		PrintError("【1】创建解密文件出错：" + err.Error())
 	}
-	var errW string
+	var (
+		errW string
+		cnt int
+	)
+	PrintMessage("处理中，请稍后...")
 	buf := bufio.NewReader(file)
 	for {
 		line, err := buf.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				PrintSuccess("SUCCESS!")
+				if errW != "" {
+					PrintWarning(errW)
+					logger(fmt.Sprintf("FAIL: file: %s,err: %s", filePath, errW), "DECODE_TEXT_ERROR")
+				}
+				logger(fmt.Sprintf("SUCCESS: file: %s,cnt: %d", filePath, cnt), "DECODE_TEXT_SUCCESS")
+				PrintSuccess("SUCCESS! \n\n解密文件为" + file2.Name())
 			} else {
 				PrintWarning("【end】读入加密文件出错! " + err.Error())
-			}
-			if errW != "" {
-				PrintWarning(errW)
 			}
 			os.Exit(0)
 		}
@@ -121,6 +126,7 @@ func decodeTxt(filePath string, needBase64Bool bool) {
 			errW += fmt.Sprintf("写入时出错，原始数据为 %v, 解密后为 %v，错误为 %v \n", line, content, err.Error())
 			continue
 		}
+		cnt++
 	}
 }
 
@@ -128,6 +134,7 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 	var (
 		errW string
 	 	errNums int
+		cnt int
 	)
 	columnName, _, err := dlgs.List("模式", "请选择解密数据所在列:",
 		[]string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"})
@@ -136,6 +143,7 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 	if err != nil {
 		PrintError("加载文件时出错 " + err.Error() + "\n你可以尝试新建或另存为.xlsx文件")
 	}
+	PrintMessage("处理中，请稍后...")
 	sheets := f.GetSheetMap()
 	for _, sheet := range sheets {
 		rows := f.GetRows(sheet)
@@ -162,6 +170,7 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 						continue
 					}
 				}
+				cnt++
 				f.SetCellStr(sheet, col+strconv.Itoa(index+1), content)
 			}
 		}
@@ -169,6 +178,11 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 	if err := f.Save(); err != nil {
 		PrintError("保存文件时出错 " + err.Error())
 	}
-	PrintSuccess("SUCCESS \nSUCCESS \nSUCCESS \n\n\n\n" + errW)
+	if errW != "" {
+		logger(fmt.Sprintf("FAIL: file: %s,err: %s", filePath, errW), "DECODE_EXCEL_ERROR")
+	}
+	logger(fmt.Sprintf("SUCCESS: file: %s,cnt: %d", filePath, cnt), "DECODE_EXCEL_SUCCESS")
+	PrintSuccess(fmt.Sprintf("SUCCESS \nSUCCESS \nSUCCESS \n\n成功数量: %d, err: %v", cnt, errW))
+	ch<-true
 	return
 }

@@ -49,6 +49,9 @@ func (lg *Log) TableName() string {
 	return "log"
 }
 
-func (lg *Log) Insert(log Log) (int64, error) {
+func (lg *Log) Insert(log *Log) (int64, error) {
+	if log == nil {
+		log = lg
+	}
 	return engin.NewOrm().Table(&log).Data(log).Insert()
 }

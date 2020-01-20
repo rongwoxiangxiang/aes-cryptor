@@ -72,14 +72,12 @@ func startAndTest() {
 }
 
 func PrintError(string2 string) {
-	if string2 != "" {
-		os.Exit(0)
-	}
 	if canUseWarningErrInfo {
 		dlgs.Error("ERROR", string2)
 	} else {
 		dlgs.Question("ERROR", string2, false)
 	}
+	logger(string2,"ERROR")
 	os.Exit(0)
 }
 
@@ -102,5 +100,13 @@ func PrintSuccess(string2 string) {
 		dlgs.Info("SUCCESS", string2)
 	} else {
 		dlgs.Question("SUCCESS", string2, false)
+	}
+}
+
+func PrintMessage(string2 string) {
+	if canUseWarningErrInfo {
+		dlgs.Info("MESSAGE", string2)
+	} else {
+		dlgs.Question("MESSAGE", string2, false)
 	}
 }
