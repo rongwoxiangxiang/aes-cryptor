@@ -183,6 +183,5 @@ func decodeExcel(filePath string, needBase64Bool bool) {
 	}
 	logger(fmt.Sprintf("SUCCESS: file: %s,cnt: %d", filePath, cnt), "DECODE_EXCEL_SUCCESS")
 	PrintSuccess(fmt.Sprintf("SUCCESS \nSUCCESS \nSUCCESS \n\n成功数量: %d, err: %v", cnt, errW))
-	ch<-true
 	return
 }

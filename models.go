@@ -53,5 +53,5 @@ func (lg *Log) Insert(log *Log) (int64, error) {
 	if log == nil {
 		log = lg
 	}
-	return engin.NewOrm().Table(&log).Data(log).Insert()
+	return engin.NewOrm().Table(log).Data(log).Insert()
 }
