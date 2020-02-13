@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/gen2brain/dlgs"
-	"os"
 	"strings"
 )
 
@@ -21,7 +20,7 @@ func main() {
 			break
 		}
 		if !PrintChosen("输入错误，请重新输入") {
-			os.Exit(0)
+			PrintError("错误次数过多")
 		}
 	}
 	if loginStatus {
@@ -95,7 +94,6 @@ func processStrings() {
 		}
 		printStr = ""
 	}
-
 }
 
 func doProcessStings(mode string) (data map[string]string, errString string) {
@@ -123,7 +121,6 @@ func doProcessStings(mode string) (data map[string]string, errString string) {
 	}
 
 	strArr := strings.Split(strs, ",")
-
 	switch mode {
 	case "decode-aes":
 		data, errString = decodeAesString(strArr)
@@ -148,47 +145,6 @@ func processFile() {
 	}
 }
 
-func getFile() string {
-	file, _, err := dlgs.File("请选择文件", "", false)
-	if err != nil {
-		loggerError(err)
-	}
-	return file
-}
-
-func getAESMode() string {
-	mode, _, err := dlgs.List("模式", "请选择模式:", []string{"AES_ENCODE", "AES_DECODE"})
-	if err != nil {
-		loggerError(err)
-	}
-	return mode
-}
-
-func needBase64DecodeEncode() bool {
-	needBase64Decode, err := dlgs.Question("二次解密/加密", "是否需要base64二次解密/加密", false)
-	if err != nil {
-		loggerError(err)
-	}
-	return needBase64Decode
-}
-
-func needContinue() bool {
-	needCont, err := dlgs.Question("是否继续操作", "是否继续操作", false)
-	if err != nil {
-		loggerError(err)
-	}
-	return needCont
-}
-func checkClose() {
-	needClose, err := dlgs.Question("是否关闭", "是否关闭AES工具", false)
-	if err != nil {
-		loggerError(err)
-	}
-	if needClose {
-		os.Exit(0)
-	}
-}
-
 func validLogin(name, pass string) bool {
 	user, err := new(User).GetByName(name)
 	if err != nil {
@@ -196,10 +152,10 @@ func validLogin(name, pass string) bool {
 	}
 	signCalc := base64.StdEncoding.EncodeToString([]byte(pass + user.Salt))
 	if IsEmpty(user.Pass) || Md5(signCalc) != user.Pass {
-		logger("PASSWORD_ERR","LOGIN")
+		logger("PASSWORD_ERR", "LOGIN")
 		return false
 	}
-	logger("SUCCESS","LOGIN")
+	logger("SUCCESS", "LOGIN")
 	return true
 }
 
@@ -207,27 +163,4 @@ func recoverTop() {
 	if r := recover(); r != nil {
 		PrintError(fmt.Sprintf("AES ERROR %v", r))
 	}
-}
-
-func logger(content, operation string) {
-	log := new(Log)
-	log.Content = content
-	log.Operator = operator
-	log.Operation = operation
-	_,err := log.Insert(nil)
-	if err != nil {
-		PrintError("未知错误，" + err.Error())
-	}
-}
-
-func loggerError(err error) {
-	log := new(Log)
-	log.Content = err.Error()
-	log.Operator = operator
-	log.Operation = "ERROR"
-	_,errr := log.Insert(nil)
-	if errr != nil {
-		PrintError("未知错误，" + errr.Error())
-	}
-	os.Exit(0)
 }

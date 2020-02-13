@@ -4,13 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/360EntSecGroup-Skylar/excelize"
-	"github.com/gen2brain/dlgs"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -71,18 +69,17 @@ func decodeFile() {
 	filePath := getFile()
 	_, err := os.Stat(filePath)
 	if err == nil {
-		needBase64Bool = needBase64DecodeEncode()
 		if strings.Contains(filePath, ".xls") {
-			decodeExcel(filePath)
+			decodeExcel(filePath, needBase64DecodeEncode())
 		} else if strings.Contains(filePath, ".txt") {
-			decodeTxt(filePath)
+			decodeTxt(filePath, needBase64DecodeEncode())
 		} else {
 			PrintError("当前仅支持 txt/xls/xlsx 格式的文件")
 		}
 	}
 }
 
-func decodeTxt(filePath string) {
+func decodeTxt(filePath string, needBase64Bool bool) {
 	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
 	if err != nil {
 		PrintError("【0】打开源文件出错：" + err.Error())
@@ -93,7 +90,7 @@ func decodeTxt(filePath string) {
 	}
 	var (
 		errW string
-		cnt  int
+		cnt int
 	)
 	PrintMessage("处理中，请稍后...")
 	buf := bufio.NewReader(file)
@@ -134,97 +131,95 @@ func decodeTxt(filePath string) {
 	}
 }
 
-var (
-	eachTimes        = 40000 //每40000个处理一次save
-	goNum            = 3     //开启每次处理协程数量
-	excelFile        *excelize.File
-	needBase64Bool   bool
-	successCnt       int32
-	dataColumnNum    int
-	insertColumnName string
-)
+var lock sync.Mutex
+var msg chan map[string]string
+var eachTimes = 10000 //每10000个起个协程处理
 
-func decodeExcel(filePath string) {
+func decodeExcel(filePath string, needBase64Bool bool) {
 	var (
-		errW, dataColumnName string
-		err                  error
+		errW string
+		percent int
 	)
-	dataColumnName, _, err = dlgs.List("模式", "请选择解密数据所在列:",
-		[]string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"})
-	dataColumnNum = ColumnNameToNumber(dataColumnName)
-	insertColumnName = ColumnNumberToName(dataColumnNum + 1) //插入新列用于存放手机号
+	//columnName, _, err := dlgs.List("模式", "请选择解密数据所在列:",
+	//	[]string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"})
+	columnName := "D"
 
-	excelFile, err = excelize.OpenFile(filePath)
+	f, err := excelize.OpenFile(filePath)
 	if err != nil {
 		PrintError("加载文件时出错 " + err.Error() + "\n你可以尝试新建或另存为.xlsx文件")
 	}
-	defer excelFile.Save()
-	sheets := excelFile.GetSheetMap()
+	sheets := f.GetSheetMap()
 	for _, sheet := range sheets {
-		excelFile.InsertCol(sheet, insertColumnName) //需要解密数据列后插入新列
-		rows := excelFile.GetRows(sheet)
-		PrintMessage("reader file success,now start processing...")
+		msg = make(chan map[string]string, 100)
+		rows := f.GetRows(sheet)
+		PrintMessage("文件读取成功，开始处理，请稍后...")
 		if err == nil {
+			col := ColumnNumberToName(len(rows[0]) + 2)
 			total := len(rows)
 			if total > eachTimes { //文件超过3w并行处理
-				segmens := SplitArrayStep(rows, eachTimes)
-				for _, segmen := range segmens {
-					var ws = sync.WaitGroup{}
-					if total < segmen+eachTimes {
-						process(sheet, rows[segmen:], segmen, nil)
+				percent = total / eachTimes
+				for start := 0; start <= percent; start++ {
+					var data [][]string
+					from := start * eachTimes
+					if start == percent {
+						data = rows[from:]
 					} else {
-						for i := 0; i < goNum; i++ {
-							ws.Add(1)
-							start := segmen + i*eachTimes/goNum
-							go process(sheet, rows[start:start+eachTimes/goNum], start, &ws)
-						}
-						ws.Wait()
+						data = rows[from:from+eachTimes]
 					}
+					go process(data, from, columnName, needBase64Bool)
 				}
-			} else {
-				process(sheet, rows, 0, nil)
 			}
+			setCellStr(f, sheet, col)
 		}
 	}
 	if errW != "" {
 		logger(fmt.Sprintf("FAIL: file: %s,err: %s", filePath, errW), "DECODE_EXCEL_ERROR")
 	}
-	logger(fmt.Sprintf("SUCCESS: total: %d", successCnt), "DECODE_EXCEL_SUCCESS")
-	Notify(fmt.Sprintf(" SUCCESS total: %d", successCnt))
-
+	return
 }
 
-func process(sheet string, rows [][]string, start int, ws *sync.WaitGroup) {
-	defer func(ws *sync.WaitGroup) {
-		if ws != nil {
-			ws.Done()
+func setCellStr(f *excelize.File, sheet, col string) {
+	for times := 0;; {
+		select {
+		case mssg := <-msg:
+			times++
+			f.SetCellStr(sheet, col+mssg["id"], mssg["val"])
+		case <- time.After(time.Second * 5):
+			f.Save()
+			return
 		}
-	}(ws)
-	var errW string
-	var localSuccess int
-	dataColumnName := ColumnNumberToName(dataColumnNum)
+		if times > 0 && times%eachTimes == 0 {
+			fmt.Println("process save:", times, time.Now())
+			f.Save()
+			fmt.Println("starttt save:", times, time.Now())
+		}
+	}
+}
+
+func process(rows [][]string, start int, columnName string, needBase64Bool bool)  {
+	var (
+		errW string
+	)
+	columnNum := ColumnNameToNumber(columnName)
 	for index, row := range rows {
-		content, err := DecodeAes(row[dataColumnNum])
+		content, err := DecodeAes(row[columnNum])
 		if err != nil {
 			errW += fmt.Sprintf("部分信息解密Aes失败，位置为 %s%d, 原始数据为 %v，错误为 %v \n",
-				dataColumnName, index+1, row[dataColumnNum], err.Error())
+				columnName, index+1, row[columnNum], err.Error())
 			continue
 		}
 		if needBase64Bool {
 			content, err = DecodeBase64(content)
 			if err != nil {
 				errW += fmt.Sprintf("部分信息Base64失败，位置为 %s%d,原始数据为 %v，错误为 %v \n",
-					dataColumnName, index+1, row[dataColumnNum], err.Error())
+					columnName, index+1, row[columnNum], err.Error())
 				continue
 			}
 		}
-		localSuccess++
-		excelFile.SetCellStr(sheet, insertColumnName+strconv.Itoa(index+1+start), content)
+		message := map[string]string{"id": strconv.Itoa(index+1+start), "val": content}
+		msg <- message
 	}
-	atomic.AddInt32(&successCnt, int32(localSuccess))
 	if errW != "" {
-		logger("FAIL: when process: "+errW, "DECODE_EXCEL_PROCESS_FAIL")
+		logger("FAIL: when process: "+ errW, "DECODE_EXCEL_FAIL")
 	}
-	Notify(fmt.Sprintf("Aes: already finished cnt: %d", successCnt))
-	logger(fmt.Sprintf("success process: %v,%v,%v", start, localSuccess, time.Now()), "DECODE_EXCEL_PROCESS")
 }
